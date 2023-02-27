@@ -1,12 +1,10 @@
 package server;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
-import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
 
-import static constants.Commands.*;
 import static constants.Constants.PORT;
 
 /**
@@ -21,19 +19,14 @@ public class Server {
     private ServerSocket server;
 
     /**
-     * Входящий поток данных для приёма сообщений от клиента.
+     * Список клиентов онлайн.
      */
-    private DataInputStream in;
-
-    /**
-     * Исходящий поток данных для отправки сообщений клиенту.
-     */
-    private DataOutputStream out;
+    private final List<ClientManager> CLIENTS = new ArrayList<>();
 
     /**
      * Конструктор.
-     * При создании объекта сервер автоматически запускается
-     * в режим ожидания соединения с клиентской частью.
+     * При создании экземпляра сервера он автоматически запускается
+     * в режим ожидания соединения клиентов.
      */
     public Server() {
         try {
@@ -50,46 +43,51 @@ public class Server {
     }
 
     /**
-     * Метод запускает сервер в режим ожидания подключения клиента,
-     * после подключения клиента инициализирует потоки данных
-     * и запускает режим обмена сообщениями.
+     * Метод запускает сервер в режим ожидания подключения клиентов,
+     * каждому подключившемуся клиенту выдаётся свой сокет и экземпляр менеджера.
      *
      * @throws IOException ошибка ввода-вывода
      */
     private void runServer() throws IOException {
         server = new ServerSocket(PORT);
-        System.out.println("Сервер успешно запущен.");
-        Socket socket = server.accept();
-        System.out.println("Клиент успешно соединился.");
-        in = new DataInputStream(socket.getInputStream());
-        out = new DataOutputStream(socket.getOutputStream());
-        work();
+        System.out.printf("Сервер успешно запущен, порт %d.\n", PORT);
+
+        // Цикл подключения клиентов (для каждого клиента создаётся свой экземпляр менеджера)
+        while (true) {
+            ClientManager client = new ClientManager(server.accept(), this);
+            System.out.println(client + "успешно подключен.");
+        }
     }
 
     /**
-     * Обмен сообщениями между сервером и клиентом.
+     * Подключение клиента к рассылке сообщений.
      *
-     * @throws IOException ошибка ввода-вывода
+     * @param client подключаемый клиент.
      */
-    private void work() throws IOException {
-        System.out.println("Запущен режим обмена сообщениями.");
+    public void subscribe(ClientManager client) {
+        CLIENTS.add(client);
+        System.out.println(client + "успешно подписан на рассылку сообщений.");
+    }
 
-        // Цикл обмена сообщениями
-        while (true) {
-            // Принимаем сообщение от клиента
-            String message = in.readUTF();
-            System.out.println("Client: " + message);
+    /**
+     * Отключение клиента от рассылки сообщений.
+     *
+     * @param client отключаемый клиент.
+     */
+    public void unsubscribe(ClientManager client) {
+        CLIENTS.remove(client);
+        System.out.println(client + "успешно отключён от рассылки сообщений.");
+    }
 
-            // Если пришла команда на отключение, отправляем клиенту обратно
-            // команду на отключение и прерываем цикл обмена сообщениями
-            if (EXIT.equals(message)) {
-                System.out.println("Клиент отключился.");
-                out.writeUTF(EXIT);
-                break;
-            }
-
-            // Отправляем клиенту обратно его же сообщение
-            out.writeUTF("Server: " + message);
+    /**
+     * Рассылка сообщения всем клиентам онлайн.
+     *
+     * @param message       текст сообщения.
+     * @throws IOException  ошибка ввода-вывода
+     */
+    public void broadcastMessage(String message) throws IOException {
+        for (ClientManager client : CLIENTS) {
+            client.sendMessage(message);
         }
     }
 }
